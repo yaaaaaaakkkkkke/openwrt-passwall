@@ -32,10 +32,10 @@ if formvalue_proto then s.val["protocol"] = formvalue_proto end
 local arg_select_proto = luci.http.formvalue("select_proto") or ""
 
 local ss_method_list = {
-	"none", "plain", "aes-128-gcm", "aes-256-gcm", "chacha20-poly1305", "chacha20-ietf-poly1305", "xchacha20-poly1305", "xchacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"
+	"aes-128-gcm", "aes-256-gcm", "chacha20-poly1305", "chacha20-ietf-poly1305", "xchacha20-poly1305", "xchacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"
 }
 
-local security_list = { "none", "auto", "aes-128-gcm", "chacha20-poly1305", "zero" }
+local security_list = { "auto", "aes-128-gcm", "chacha20-poly1305" }
 
 local header_type_list = {
 	"none", "srtp", "utp", "wechat-video", "dtls", "wireguard", "dns"
@@ -44,10 +44,10 @@ local header_type_list = {
 local xray_version = api.get_app_version("xray")
 
 o = s:option(ListValue, _n("protocol"), translate("Protocol"))
+o:value("socks", translate("Socks"))
+o:value("http", translate("HTTP"))
 o:value("vmess", translate("Vmess"))
 o:value("vless", translate("VLESS"))
-o:value("http", translate("HTTP"))
-o:value("socks", translate("Socks"))
 o:value("shadowsocks", translate("Shadowsocks"))
 o:value("trojan", translate("Trojan"))
 o:value("wireguard", translate("WireGuard"))
@@ -152,9 +152,10 @@ if load_balancing_options then -- [[ Load balancing Start ]]
 	o:depends({ [_n("node_add_mode")] = "batch" })
 	local descrStr = "Example: <code>^A && B && !C && D$</code><br>"
 	descrStr = descrStr .. "This means the node remark must start with A (^), include B, exclude C (!), and end with D ($).<br>"
-	descrStr = descrStr .. "Conditions are joined by <code>&&</code>, and their order does not affect the result."
-	o.description = translate(descrStr) .. string.format("<br><font color='red'>%s</font>",
-			translate("Keep the match scope small. Too many nodes can impact router performance."))
+	descrStr = descrStr .. "Conditions are joined by <code>&&</code> (AND), and their order does not affect the result.<br>"
+	descrStr = descrStr .. "Multiple groups can be separated by <code>||</code> (OR), matching succeeds if any group matches.<br>"
+	descrStr = descrStr .. "Example: <code>A && B || C && D</code> means (A AND B) OR (C AND D)."
+	o.description = translate(descrStr)
 
 	o = s:option(ListValue, _n("balancingStrategy"), translate("Balancing Strategy"))
 	o:depends({ [_n("protocol")] = "_balancing" })
@@ -245,6 +246,7 @@ if load_balancing_options then -- [[ Load balancing Start ]]
 	o:value("https://www.youtube.com/generate_204", "YouTube")
 	o:value("https://connect.rom.miui.com/generate_204", "MIUI (CN)")
 	o:value("https://connectivitycheck.platform.hicloud.com/generate_204", "HiCloud (CN)")
+	o:value("https://wifi.vivo.com.cn/generate_204", "VIVO (CN)")
 	o.default = o.keylist[3]
 	o.description = translate("The URL used to detect the connection status.")
 
@@ -322,15 +324,6 @@ o.rewrite_option = "method"
 for a, t in ipairs(ss_method_list) do o:value(t) end
 o:depends({ [_n("protocol")] = "shadowsocks" })
 
-o = s:option(Flag, _n("iv_check"), translate("IV Check"))
-o:depends({ [_n("protocol")] = "shadowsocks", [_n("ss_method")] = "aes-128-gcm" })
-o:depends({ [_n("protocol")] = "shadowsocks", [_n("ss_method")] = "aes-256-gcm" })
-o:depends({ [_n("protocol")] = "shadowsocks", [_n("ss_method")] = "chacha20-poly1305" })
-o:depends({ [_n("protocol")] = "shadowsocks", [_n("ss_method")] = "xchacha20-poly1305" })
-
-o = s:option(Flag, _n("uot"), translate("UDP over TCP"))
-o:depends({ [_n("protocol")] = "shadowsocks" })
-
 o = s:option(ListValue, _n("flow"), translate("flow"))
 o.default = ""
 o:value("", translate("Disable"))
@@ -359,6 +352,12 @@ end
 
 o = s:option(Value, _n("hysteria2_realm_url"), translate("Realm URL"), translate("Example:") .. "realm://public@realm.hy2.io/your-realm-name")
 o:depends({ [_n("hysteria2_realms")] = "1" })
+o.validate = function(self, value)
+	value = api.trim(value)
+	local realm = api.parse_realm_uri(value)
+	if realm then return value end
+	return nil, translate("Invalid Realm URL.")
+end
 
 o = s:option(DynamicList, _n("hysteria2_realm_stun"), translate("Realm STUN"))
 o.default = { "stun.sip.us:3478", "stun.nextcloud.com:3478", "global.stun.twilio.com:3478" }
@@ -376,6 +375,18 @@ o:depends({ [_n("protocol")] = "hysteria2" })
 
 o = s:option(Value, _n("hysteria2_obfs_password"), translate("Obfs Password"))
 o:depends({ [_n("hysteria2_obfs_type")] = "salamander" })
+o:depends({ [_n("hysteria2_obfs_type")] = "gecko" })
+
+o = s:option(Value, _n("hysteria2_obfs_MinPacketSize"), translate("Gecko Packet Size (min)"))
+o.datatype = "uinteger"
+o.placeholder = "512"
+o.default = "512"
+o:depends({ [_n("hysteria2_obfs_type")] = "gecko" })
+
+o = s:option(Value, _n("hysteria2_obfs_MaxPacketSize"), translate("Gecko Packet Size (max)"))
+o.datatype = "uinteger"
+o.placeholder = "1200"
+o.default = "1200"
 o:depends({ [_n("hysteria2_obfs_type")] = "gecko" })
 
 o = s:option(Value, _n("hysteria2_up_mbps"), translate("Max upload Mbps"))
@@ -399,8 +410,6 @@ o = s:option(Flag, _n("tls"), translate("TLS"))
 o.default = 0
 o:depends({ [_n("protocol")] = "vmess" })
 o:depends({ [_n("protocol")] = "vless" })
-o:depends({ [_n("protocol")] = "http" })
-o:depends({ [_n("protocol")] = "socks" })
 o:depends({ [_n("protocol")] = "trojan" })
 o:depends({ [_n("protocol")] = "shadowsocks" })
 
@@ -422,7 +431,6 @@ o:value("http/1.1")
 o:value("h2,http/1.1")
 o:value("h3,h2,http/1.1")
 o:depends({ [_n("tls")] = true, [_n("reality")] = false })
-o:depends({ [_n("protocol")] = "hysteria2" })
 
 -- o = s:option(Value, _n("minversion"), translate("minversion"))
 -- o.default = "1.3"
@@ -450,6 +458,21 @@ if api.compare_versions(xray_version, ">=", "26.1.31") then
 	o = s:option(Value, _n("tls_CertByName"), translate("TLS Certificate Name (CertName)"), translate("TLS is used to verify the leaf certificate name."))
 	o:depends({ [_n("tls")] = true, [_n("reality")] = false })
 	o:depends({ [_n("protocol")] = "hysteria2" })
+end
+
+o = s:option(Flag, _n("tls_certificate"), translate("TLS Certificate (PEM)"))
+o.default = "0"
+o:depends({ [_n("tls")] = true, [_n("reality")] = false })
+o:depends({ [_n("protocol")] = "hysteria2" })
+
+o = s:option(TextValue, _n("tls_certificate_pem"), "　", translate("Full certificate (chain), PEM format."))
+o.default = ""
+o.rows = 5
+o.wrap = "off"
+o:depends({ [_n("tls_certificate")] = true })
+o.validate = function(self, value)
+	value = api.trim(value):gsub("\r\n", "\n"):gsub("[ \t]*\n[ \t]*", "\n"):gsub("\n+", "\n")
+	return value
 end
 
 o = s:option(Flag, _n("ech"), translate("ECH"))
@@ -492,6 +515,7 @@ o:value("ios")
 o:value("android")
 o:value("random")
 o:value("randomized")
+o:value("unsafe")
 o.default = "chrome"
 o:depends({ [_n("tls")] = true, [_n("utls")] = true })
 o:depends({ [_n("tls")] = true, [_n("reality")] = true })
@@ -518,7 +542,6 @@ o:value("httpupgrade", "HttpUpgrade")
 o:value("xhttp", "XHTTP")
 o:depends({ [_n("protocol")] = "vmess" })
 o:depends({ [_n("protocol")] = "vless" })
-o:depends({ [_n("protocol")] = "socks" })
 o:depends({ [_n("protocol")] = "shadowsocks" })
 o:depends({ [_n("protocol")] = "trojan" })
 
@@ -711,8 +734,6 @@ o:depends({ [_n("protocol")] = "vless", [_n("transport")] = "raw" })
 o:depends({ [_n("protocol")] = "vless", [_n("transport")] = "ws" })
 o:depends({ [_n("protocol")] = "vless", [_n("transport")] = "grpc" })
 o:depends({ [_n("protocol")] = "vless", [_n("transport")] = "httpupgrade" })
-o:depends({ [_n("protocol")] = "http" })
-o:depends({ [_n("protocol")] = "socks" })
 o:depends({ [_n("protocol")] = "shadowsocks" })
 o:depends({ [_n("protocol")] = "trojan" })
 
@@ -765,11 +786,6 @@ o.default = 0
 --[[tcpMptcp]]
 o = s:option(Flag, _n("tcpMptcp"), "tcpMptcp", translate("Enable Multipath TCP, need to be enabled in both server and client configuration."))
 o.default = 0
-
-o = s:option(Value, _n("preconns"), translate("Pre-connections"), translate("Number of early established connections to reduce latency."))
-o.datatype = "uinteger"
-o.placeholder = 0
-o:depends({ [_n("protocol")] = "vless" })
 
 o = s:option(ListValue, _n("domain_resolver"), translate("Domain DNS Resolve"))
 o.description = translate("If the node address is a domain name, this DNS will be used for resolution.") .. "<br>" .. string.format('<font color="red">%s</font>',
