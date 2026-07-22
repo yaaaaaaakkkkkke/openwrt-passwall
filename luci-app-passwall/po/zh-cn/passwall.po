@@ -475,6 +475,9 @@ msgstr "负载均衡"
 msgid "Node Addition Method"
 msgstr "节点添加方式"
 
+msgid "Backup Node Addition Method"
+msgstr "后备节点添加方式"
+
 msgid "Manual"
 msgstr "手动"
 
@@ -1817,8 +1820,14 @@ msgstr "TLS 用于验证 leaf 证书的 name。"
 msgid "Fetch Manually"
 msgstr "手动获取"
 
-msgid "Fetch Failed"
-msgstr "获取失败"
+msgid "Fetch Failed!"
+msgstr "获取失败！"
+
+msgid "Requires OpenSSL to retrieve the TLS certificate chain fingerprint."
+msgstr "获取 TLS 证书链指纹需要 OpenSSL 支持。"
+
+msgid "QUIC protocols such as HY2 also require curl with http3 support."
+msgstr "HY2 等 QUIC 协议还需要 curl 支持 http3。"
 
 msgid "TLS Certificate (PEM)"
 msgstr "TLS 证书（PEM）"
@@ -1912,6 +1921,12 @@ msgstr "如果节点地址是域名，则将使用此 DNS 进行解析。"
 
 msgid "Note: For node-specific DNS only. Keep Auto to avoid extra overhead."
 msgstr "注意：仅用于节点专用 DNS，通常请保持自动，以免增加开销。"
+
+msgid "Enable Happy Eyeballs"
+msgstr "启用 Happy Eyeballs"
+
+msgid "Attempts IPv4 and IPv6 simultaneously; automatically uses the faster connection."
+msgstr "同时尝试 IPv4 和 IPv6 连接，自动使用更快的连接。"
 
 msgid "Supports only Xray or Sing-box node types."
 msgstr "仅支持 Xray 或 Sing-box 类型节点。"
@@ -2135,3 +2150,6 @@ msgstr "Gecko 包大小（最小）"
 
 msgid "Gecko Packet Size (max)"
 msgstr "Gecko 包大小（最大）"
+
+msgid "valid time (hh:mm)"
+msgstr "有效时间（hh:mm）"

@@ -441,24 +441,15 @@ o = s:option(Value, _n("tls_serverName"), "SNI " .. translate("Domain"))
 o:depends({ [_n("tls")] = true })
 o:depends({ [_n("protocol")] = "hysteria2" })
 
-if api.compare_versions(os.date("%Y.%m.%d"), "<", "2026.6.1") then
-	o = s:option(Flag, _n("tls_allowInsecure"), translate("allowInsecure"), translate("Whether unsafe connections are allowed. When checked, Certificate validation will be skipped."))
-	o.default = "0"
-	o:depends({ [_n("tls")] = true, [_n("reality")] = false })
-	o:depends({ [_n("protocol")] = "hysteria2" })
-end
+o = s:option(Value, _n("tls_pinSHA256"), translate("TLS Chain Fingerprint (SHA256)"))
+o:depends({ [_n("tls")] = true, [_n("reality")] = false })
+o:depends({ [_n("protocol")] = "hysteria2" })
+o.description = translate("Once set, connects only when the server’s chain fingerprint matches.") ..
+		string.format("<a href='javascript:void(0)' onclick='javascript:fetchCertSha256(this)'>%s</a>", "→ " .. translate("Fetch Manually"))
 
-if api.compare_versions(xray_version, ">=", "26.1.31") then
-	o = s:option(Value, _n("tls_pinSHA256"), translate("TLS Chain Fingerprint (SHA256)"))
-	o:depends({ [_n("tls")] = true, [_n("reality")] = false })
-	o:depends({ [_n("protocol")] = "hysteria2" })
-	o.description = translate("Once set, connects only when the server’s chain fingerprint matches.") ..
-			string.format("<a href='javascript:void(0)' onclick='javascript:fetchCertSha256(this)'>%s</a>", "→ " .. translate("Fetch Manually"))
-
-	o = s:option(Value, _n("tls_CertByName"), translate("TLS Certificate Name (CertName)"), translate("TLS is used to verify the leaf certificate name."))
-	o:depends({ [_n("tls")] = true, [_n("reality")] = false })
-	o:depends({ [_n("protocol")] = "hysteria2" })
-end
+o = s:option(Value, _n("tls_CertByName"), translate("TLS Certificate Name (CertName)"), translate("TLS is used to verify the leaf certificate name."))
+o:depends({ [_n("tls")] = true, [_n("reality")] = false })
+o:depends({ [_n("protocol")] = "hysteria2" })
 
 o = s:option(Flag, _n("tls_certificate"), translate("TLS Certificate (PEM)"))
 o.default = "0"
@@ -676,6 +667,14 @@ o = s:option(TextValue, _n("xhttp_extra"), "　", translate("An XHttpObject in J
 o:depends({ [_n("use_xhttp_extra")] = true })
 o.rows = 10
 o.wrap = "off"
+o.datatype = "json"
+local o_validate = o.validate
+o.validate = function(self, value)
+	value = api.trim(value):gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
+	local v = o_validate(self, value)
+	if v then return v end
+	return nil, "XHTTP Extra " .. translate("Must be JSON text!")
+end
 o.custom_cfgvalue = function(self, section, value)
 	local raw = m:get(section, "xhttp_extra")
 	if raw then
@@ -696,14 +695,6 @@ o.custom_write = function(self, section, value)
 		end
 	else
 		m:del(section, "download_address")
-	end
-end
-o.validate = function(self, value)
-	value = api.trim(value):gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
-	if api.jsonc.parse(value) then
-		return value
-	else
-		return nil, "XHTTP Extra " .. translate("Must be JSON text!")
 	end
 end
 o.custom_remove = function(self, section, value)
@@ -761,6 +752,14 @@ o.rows = 10
 o.wrap = "off"
 o.description = translate("An FinalMaskObject in JSON format, used for sharing.") .. "<br>" ..
 		translate("Custom finalmask overrides mkcp, hysteria2, fragment, noise, and related settings.")
+o.datatype = "json"
+local o_validate = o.validate
+o.validate = function(self, value)
+	value = api.trim(value):gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
+	local v = o_validate(self, value)
+	if v then return v end
+	return nil, "FinalMask " .. translate("Must be JSON text!")
+end
 o.custom_cfgvalue = function(self, section, value)
 	local raw = m:get(section, "finalmask")
 	if raw then
@@ -769,14 +768,6 @@ o.custom_cfgvalue = function(self, section, value)
 end
 o.custom_write = function(self, section, value)
 	m:set(section, "finalmask", api.base64Encode(value) or "")
-end
-o.validate = function(self, value)
-	value = api.trim(value):gsub("\r\n", "\n"):gsub("^[ \t]*\n", ""):gsub("\n[ \t]*$", ""):gsub("\n[ \t]*\n", "\n")
-	if api.jsonc.parse(value) then
-		return value
-	else
-		return nil, "FinalMask " .. translate("Must be JSON text!")
-	end
 end
 
 --[[Fast Open]]
@@ -817,6 +808,9 @@ o:value("UseIPv6v4", translate("Prefer IPv6"))
 o:value("UseIPv4", translate("IPv4 Only"))
 o:value("UseIPv6", translate("IPv6 Only"))
 
+o = s:option(Flag, _n("happy_eyeballs"), translate("Enable Happy Eyeballs"), translate("Attempts IPv4 and IPv6 simultaneously; automatically uses the faster connection."))
+o.default = 0
+
 local protocols = s.fields[_n("protocol")].keylist
 if #protocols > 0 then
 	for i, v in ipairs(protocols) do
@@ -828,7 +822,11 @@ if #protocols > 0 then
 			s.fields[_n("address")]:depends(depends_condition)
 			s.fields[_n("port")]:depends(depends_condition)
 			s.fields[_n("domain_resolver")]:depends(depends_condition)
-			s.fields[_n("domain_strategy")]:depends(depends_condition)
+			s.fields[_n("happy_eyeballs")]:depends(depends_condition)
+
+			local strategy_depends = api.clone(depends_condition)
+			strategy_depends[_n("happy_eyeballs")] = false
+			s.fields[_n("domain_strategy")]:depends(strategy_depends)
 
 			if v ~= "hysteria2" then
 				s.fields[_n("tcp_fast_open")]:depends({ [_n("protocol")] = v })
